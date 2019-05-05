@@ -1,0 +1,9 @@
+[production]
+address = "127.0.0.1"
+port = 8000
+workers = 8
+keep_alive = 5
+log = "normal"
+
+[global.databases]
+local = { url = "db.sqlite" }

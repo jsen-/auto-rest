@@ -1,0 +1,25 @@
+[package]
+name = "auto_rest"
+version = "0.1.0"
+authors = [ "jsen- <max.enhanced@gmail.com>" ]
+edition = "2018"
+
+[dependencies]
+serde_json = "1.0.39"
+rocket = "0.4.0"
+rocket_codegen = "0.4.0"
+rust-embed = "4.3.0"
+r2d2 = "0.8.4"
+r2d2_sqlite = "0.10.0"
+
+[dependencies.serde]
+version = "1.0.91"
+features=["derive"]
+
+[dependencies.rusqlite]
+version = "0.18.0"
+features = [ "bundled" ]
+
+[dependencies.pulser]
+path = "../pulser"
+features = ["with_serde"]

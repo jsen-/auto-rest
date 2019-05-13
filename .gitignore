@@ -1,0 +1,5 @@
+/target
+/Cargo.lock
+/Rocket.toml
+/db.sqlite*
+/.vscode/launch.json

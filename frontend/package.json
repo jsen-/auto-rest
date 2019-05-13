@@ -1,0 +1,37 @@
+{
+  "name": "angular6-httpclient",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "test": "ng test",
+    "lint": "ng lint",
+    "e2e": "ng e2e"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/animations": "7.2",
+    "@angular/common": "7.2",
+    "@angular/compiler": "7.2",
+    "@angular/core": "7.2",
+    "@angular/forms": "7.2",
+    "@angular/http": "7.2",
+    "@angular/platform-browser": "7.2",
+    "@angular/platform-browser-dynamic": "7.2",
+    "@angular/router": "7.2",
+    "core-js": "2.6",
+    "rxjs": "6.5",
+    "zone.js": "0.8"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "0.13",
+    "@angular/cli": "7.3",
+    "@angular/compiler-cli": "7.2",
+    "@angular/language-service": "7.2",
+    "@types/node": "11.13",
+    "ts-node": "8.1",
+    "tslint": "5.16",
+    "typescript": "3.2"
+  }
+}

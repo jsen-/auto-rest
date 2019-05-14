@@ -46,6 +46,65 @@ fn table(
     Stream::from(SerdeAdapter::new(it))
 }
 
+#[get("/test")]
+fn test(pool: State<Pool<SqliteConnectionManager>>) -> Stream<impl io::Read + 'static> {
+    use serde_json::{to_value, Map, Number, Value};
+
+    let db = pool.get().unwrap();
+    drop(pool);
+    let it = db
+        .prepare_and_fetch("select * from om_server join om_environment join om_admin", |row| {
+            let whole_row = row
+                .columns()
+                .into_iter()
+                .enumerate()
+                .map(|(index, column)| {
+                    let value = match row.get_raw(index) {
+                        ValueRef::Null => Value::Null,
+                        ValueRef::Text(s) => Value::String(s.to_string()),
+                        ValueRef::Integer(i) => Value::Number(Number::from(i)),
+                        ValueRef::Real(f) => to_value(f).unwrap(),
+                        ValueRef::Blob(_bytes) => Value::String("<blob>".into()),
+                    };
+                    (column.name().to_string(), value)
+                })
+                .collect::<Map<_, _>>();
+            Ok(whole_row)
+        })
+        .unwrap()
+        .map(Result::unwrap);
+    Stream::from(SerdeAdapter::new(it))
+}
+
+#[get("/test2")]
+fn test2(pool: State<Pool<SqliteConnectionManager>>) -> Stream<impl io::Read + 'static> {
+    use serde_json::{to_value, Map, Number, Value};
+
+    let db = pool.get().unwrap();
+    drop(pool);
+    let mut stmt = db.prepare("select * from om_server join om_environment join om_admin").unwrap();
+    let vec = stmt.query_map(sqlite::NO_PARAMS, |row| {
+        let whole_row = row
+                .columns()
+                .into_iter()
+                .enumerate()
+                .map(|(index, column)| {
+                    let value = match row.get_raw(index) {
+                        ValueRef::Null => Value::Null,
+                        ValueRef::Text(s) => Value::String(s.to_string()),
+                        ValueRef::Integer(i) => Value::Number(Number::from(i)),
+                        ValueRef::Real(f) => to_value(f).unwrap(),
+                        ValueRef::Blob(_bytes) => Value::String("<blob>".into()),
+                    };
+                    (column.name().to_string(), value)
+                })
+                .collect::<Map<_, _>>();
+            Ok(whole_row)
+    }).unwrap()
+    .collect::<Result<Vec<_>, _>>().unwrap();
+    Stream::from(io::Cursor::new(serde_json::to_vec(&vec).unwrap()))
+}
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "target/frontend/"]
 struct FrontendFiles;
@@ -119,7 +178,7 @@ fn main() {
 
     rocket::ignite()
         .manage(pool)
-        .mount("/", routes![table, files, slash])
+        .mount("/", routes![table, files, slash, test, test2])
         .mount("/products", routes![slash])
         .launch();
 }

@@ -23,3 +23,6 @@ features = [ "bundled" ]
 [dependencies.pulser]
 path = "../pulser"
 features = ["with_serde"]
+
+[profile.release]
+debug = true

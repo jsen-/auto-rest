@@ -10,11 +10,18 @@ import { ProductDetailComponent } from './product-detail/product-detail.componen
 import { ProductEditComponent } from './product-edit/product-edit.component';
 import { ProductAddComponent } from './product-add/product-add.component';
 
+import { OmServerComponent } from './om_server/om_server.component';
+
 const appRoutes: Routes = [
   {
     path: 'products',
     component: ProductComponent,
     data: { title: 'Product List' }
+  },
+  {
+    path: 'om_server',
+    component: OmServerComponent,
+    data: { title: 'OM servers' }
   },
   {
     path: 'product-details/:id',
@@ -43,7 +50,8 @@ const appRoutes: Routes = [
     ProductComponent,
     ProductDetailComponent,
     ProductEditComponent,
-    ProductAddComponent
+    ProductAddComponent,
+    OmServerComponent
   ],
   imports: [
     RouterModule.forRoot(appRoutes),

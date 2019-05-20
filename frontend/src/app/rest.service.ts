@@ -62,19 +62,45 @@ export class GenericApi<T extends { id: Option<number> }> {
 }
 
 export class Product {
-    id: Option<number>;
-    name: string;
-    desc: string;
-    price: number;
+    id!: Option<number>;
+    name!: string;
+    desc!: string;
+    price!: number;
     updated_at?: Date;
 
+    private constructor(props: MyKeys<Product>) {
+        Object.assign(this, props);
+    }
     static new(): Product {
-        return {
+        return new Product({
             id: None.new(),
             name: "",
             desc: "",
             price: 0,
-        }
+        });
+    }
+}
+
+type MyKeys<T> = { [K in keyof T]: T[K] }
+
+export class OmServer {
+    id!: Option<number>;
+    fqdn!: string;
+    alias!: Option<string>;
+    // om_environment: Promise<Environment>
+    type!: number; // 1:primary, 0:secondary,-1:pooling
+
+    private constructor(props: MyKeys<OmServer>) {
+        Object.assign(this, props);
+    }
+
+    static new(): OmServer {
+        return new OmServer({
+            id: None.new(),
+            fqdn: "",
+            alias: None.new(),
+            type: 1,
+        });
     }
 }
 
@@ -84,7 +110,9 @@ export class Product {
 })
 export class RestService {
     product: GenericApi<Product>;
+    om_server: GenericApi<OmServer>;
     constructor(private http: HttpClient) {
         this.product = new GenericApi<Product>(http, `${endpoint}/product`, "product");
+        this.om_server = new GenericApi<OmServer>(http, `${endpoint}/om_server`, "om_server");
     }
 }

@@ -9,7 +9,7 @@ import { ActivatedRoute, Router } from "@angular/router";
 })
 export class ProductEditComponent implements OnInit {
 
-    @Input() data = Product.new();
+    @Input() data = {} as Product;
 
     constructor(public rest: RestService, private route: ActivatedRoute, private router: Router) { }
 

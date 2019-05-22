@@ -29,7 +29,7 @@ export class ProductComponent implements OnInit {
         this.router.navigate(['/product-add']);
     }
 
-    delete(id) {
+    delete(id: number) {
         this.rest.product.delete(id)
             .subscribe(res => {
                 this.getProducts();

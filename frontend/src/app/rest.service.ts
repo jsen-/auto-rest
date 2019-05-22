@@ -11,11 +11,11 @@ const httpOptions = {
     })
 };
 
-function extractData(res) {
+function extractData<T>(res: any): T {
     return res || {};
 }
 function map_extract<T>() {
-    return map<Response, T>(extractData);
+    return map<any, T>(extractData);
 }
 
 function handleError<T>(operation = 'operation', result?: T) {
@@ -30,13 +30,17 @@ function handleError<T>(operation = 'operation', result?: T) {
 }
 
 export class GenericApi<T extends { id: Option<number> }> {
-    constructor(private http: HttpClient, private path: string, private api_name: string) {
+    public static create<T extends { id: Option<number> }>(http: HttpClient, name: string): GenericApi<T> {
+        return new GenericApi<T>(http, `${endpoint}/${name}`, name);
     }
-    public get_all(): Observable<T> {
-        return this.http.get(this.path).pipe(map_extract<T>())
+
+    constructor(private http: HttpClient, private path: string, private api_name: string) { }
+
+    public get_all(): Observable<T[]> {
+        return this.http.get(this.path).pipe(map_extract())
     }
     public get(id: number): Observable<T> {
-        return this.http.get(`${this.path}/${id}`).pipe(map_extract<T>());
+        return this.http.get(`${this.path}/${id}`).pipe(map_extract());
     }
     public add(t: T): Observable<T> {
         return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
@@ -45,14 +49,14 @@ export class GenericApi<T extends { id: Option<number> }> {
                 catchError(handleError<T>(`add ${this.api_name}`))
             );
     }
-    public update(id, t): Observable<T> {
+    public update(id: number, t: T): Observable<T> {
         return this.http.put<T>(`${this.path}/${id}`, JSON.stringify(t), httpOptions)
             .pipe(
                 tap(_ => console.log(`updated ${this.api_name} id=${id}`)),
                 catchError(handleError<T>(`update ${this.api_name}`))
             );
     }
-    public delete(id): Observable<T> {
+    public delete(id: number): Observable<T> {
         return this.http.delete<T>(`${this.path}/${id}`, httpOptions)
             .pipe(
                 tap(_ => console.log(`deleted ${this.api_name} id=${id}`)),
@@ -61,6 +65,9 @@ export class GenericApi<T extends { id: Option<number> }> {
     }
 }
 
+type Ref<T> = { [K in keyof T]: T[K] };
+type Obj<T> = { [K in keyof T]: T[K] };
+
 export class Product {
     id!: Option<number>;
     name!: string;
@@ -68,51 +75,52 @@ export class Product {
     price!: number;
     updated_at?: Date;
 
-    private constructor(props: MyKeys<Product>) {
-        Object.assign(this, props);
-    }
-    static new(): Product {
-        return new Product({
-            id: None.new(),
-            name: "",
-            desc: "",
-            price: 0,
-        });
+    private constructor() { }
+    static new(props: Obj<Product>): Product {
+        return Object.assign(new Product(), props);
     }
 }
 
-type MyKeys<T> = { [K in keyof T]: T[K] }
+export class OmAdmin {
+    id!: Option<number>;
+    name!: string;
+    mail!: string;
+    sm_login!: string;
+}
+
+export class OmEnvironment {
+    id!: Option<number>;
+    name!: string;
+    om_admin!: Option<Ref<OmAdmin>>;
+}
 
 export class OmServer {
     id!: Option<number>;
     fqdn!: string;
     alias!: Option<string>;
-    // om_environment: Promise<Environment>
+    om_environment!: Ref<OmEnvironment>
     type!: number; // 1:primary, 0:secondary,-1:pooling
 
-    private constructor(props: MyKeys<OmServer>) {
-        Object.assign(this, props);
-    }
+    private constructor() { }
 
-    static new(): OmServer {
-        return new OmServer({
-            id: None.new(),
-            fqdn: "",
-            alias: None.new(),
-            type: 1,
-        });
+    static new(props: Obj<OmServer>): OmServer {
+        return Object.assign(new OmServer(), props);
     }
 }
-
 
 @Injectable({
     providedIn: 'root'
 })
 export class RestService {
     product: GenericApi<Product>;
+    om_admin: GenericApi<OmAdmin>;
     om_server: GenericApi<OmServer>;
+    om_environment: GenericApi<OmEnvironment>;
+
     constructor(private http: HttpClient) {
-        this.product = new GenericApi<Product>(http, `${endpoint}/product`, "product");
-        this.om_server = new GenericApi<OmServer>(http, `${endpoint}/om_server`, "om_server");
+        this.product = GenericApi.create<Product>(http, "product");
+        this.om_admin = GenericApi.create<OmAdmin>(http, "om_admin");;
+        this.om_server = GenericApi.create<OmServer>(http, "om_server");;
+        this.om_environment = GenericApi.create<OmEnvironment>(http, "om_environment");;
     }
 }

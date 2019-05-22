@@ -1,10 +1,9 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Inject } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { map, catchError, tap } from 'rxjs/operators';
 import { Option, None, Some } from "./utils/option";
 
-const endpoint = `${window.location.protocol}//${window.location.host}/api/v1/`;
 const httpOptions = {
     headers: new HttpHeaders({
         'Content-Type': 'application/json'
@@ -29,33 +28,32 @@ function handleError<T>(operation = 'operation', result?: T) {
     };
 }
 
+@Injectable({
+    providedIn: 'root',
+})
 export class GenericApi<T extends { id: Option<number> }> {
-    public static create<T extends { id: Option<number> }>(http: HttpClient, name: string): GenericApi<T> {
-        return new GenericApi<T>(http, `${endpoint}/${name}`, name);
-    }
-
     constructor(private http: HttpClient, private path: string, private api_name: string) { }
 
     public get_all(): Observable<T[]> {
         return this.http.get(this.path).pipe(map_extract())
     }
-    public get(id: number): Observable<T> {
-        return this.http.get(`${this.path}/${id}`).pipe(map_extract());
-    }
-    public add(t: T): Observable<T> {
-        return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
-            .pipe(
-                tap((t) => console.log(`added ${this.api_name} w/ id=${t.id}`)),
-                catchError(handleError<T>(`add ${this.api_name}`))
-            );
-    }
-    public update(id: number, t: T): Observable<T> {
-        return this.http.put<T>(`${this.path}/${id}`, JSON.stringify(t), httpOptions)
-            .pipe(
-                tap(_ => console.log(`updated ${this.api_name} id=${id}`)),
-                catchError(handleError<T>(`update ${this.api_name}`))
-            );
-    }
+    // public get(id: number): Observable<T> {
+    //     return this.http.get(`${this.path}/${id}`).pipe(map_extract());
+    // }
+    // public add(t: T): Observable<T> {
+    //     return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
+    //         .pipe(
+    //             tap((t) => console.log(`added ${this.api_name} w/ id=${t.id}`)),
+    //             catchError(handleError<T>(`add ${this.api_name}`))
+    //         );
+    // }
+    // public update(id: number, t: T): Observable<T> {
+    //     return this.http.put<T>(`${this.path}/${id}`, JSON.stringify(t), httpOptions)
+    //         .pipe(
+    //             tap(_ => console.log(`updated ${this.api_name} id=${id}`)),
+    //             catchError(handleError<T>(`update ${this.api_name}`))
+    //         );
+    // }
     public delete(id: number): Observable<T> {
         return this.http.delete<T>(`${this.path}/${id}`, httpOptions)
             .pipe(
@@ -105,22 +103,5 @@ export class OmServer {
 
     static new(props: Obj<OmServer>): OmServer {
         return Object.assign(new OmServer(), props);
-    }
-}
-
-@Injectable({
-    providedIn: 'root'
-})
-export class RestService {
-    product: GenericApi<Product>;
-    om_admin: GenericApi<OmAdmin>;
-    om_server: GenericApi<OmServer>;
-    om_environment: GenericApi<OmEnvironment>;
-
-    constructor(private http: HttpClient) {
-        this.product = GenericApi.create<Product>(http, "product");
-        this.om_admin = GenericApi.create<OmAdmin>(http, "om_admin");;
-        this.om_server = GenericApi.create<OmServer>(http, "om_server");;
-        this.om_environment = GenericApi.create<OmEnvironment>(http, "om_environment");;
     }
 }

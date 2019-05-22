@@ -1,0 +1,13 @@
+div.all {
+    display: flex;
+    align-items: flex-start;
+}
+
+ul.nav {
+    width: 150px;
+    margin: 0;
+}
+
+.main {
+    flex-grow: 1;
+}

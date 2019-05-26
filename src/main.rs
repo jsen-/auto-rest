@@ -1,25 +1,129 @@
 #![feature(proc_macro_hygiene, decl_macro, custom_attribute)]
 
+mod error;
 mod prep;
+
+use error::{Error, Result};
 
 use prep::PrepareAndFetch;
 use pulser::SerdeAdapter;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::{http, response, response::Stream, routes, Request, State};
-use rocket_codegen::get;
+use rocket_codegen::{get, post};
+use rocket_contrib::json::Json;
 use rusqlite as sqlite;
+use serde_json::{Map, Value};
 use sqlite::types::ValueRef;
 use std::io;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+struct ColumnDesc {
+    name: String,
+    ty: String,
+    not_null: bool,
+    has_dflt_value: bool,
+    pk: bool,
+}
+
+type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
+type ConnPool = Pool<SqliteConnectionManager>;
+
+fn table_columns(conn: &Connection, table_name: &str) -> sqlite::Result<Vec<ColumnDesc>> {
+    conn.prepare("PRAGMA table_info(?)")?
+        .query_map(&[table_name], |row| {
+            let not_null: i32 = row.get_unwrap(3);
+            let pk: i32 = row.get_unwrap(5);
+            let dflt_value: ValueRef = row.get_raw(4);
+            Ok(ColumnDesc {
+                name: row.get_unwrap(1),
+                ty: row.get_unwrap(2),
+                not_null: if not_null == 1 { true } else { false },
+                has_dflt_value: dflt_value != ValueRef::Null,
+                pk: if pk == 1 { true } else { false },
+            })
+        })?
+        .collect::<sqlite::Result<Vec<_>>>()
+}
+
+struct DatabaseRow(Map<String, Value>);
+impl<'r> response::Responder<'r> for DatabaseRow {
+    fn respond_to(self, request: &Request) -> response::Result<'r> {
+        response::Response::build().ok()
+    }
+}
+
+use std::fmt;
+
+struct ColumnsOf<'a>(&'a Map<String, Value>);
+impl<'a> fmt::Display for ColumnsOf<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut it = self.0.iter().peekable();
+        while let Some((key, _)) = it.next() {
+            write!(f, "{}", key)?;
+            if let Some(_) = it.peek() {
+                write!(f, ", ")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct ValuesOf<'a>(&'a Map<String, Value>);
+impl<'a> fmt::Display for ValuesOf<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut it = self.0.iter().peekable();
+        while let Some((_, value)) = it.next() {
+            write!(f, "{}", value)?;
+            if let Some(_) = it.peek() {
+                write!(f, ", ")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[post("/api/v1/<table_name>", data = "<data>")]
+fn table_add(
+    pool: State<ConnPool>,
+    table_name: String,
+    mut data: Json<Value>,
+) -> Result<DatabaseRow> {
+    let db = pool.get().unwrap();
+    drop(pool);
+
+    let obj = data.as_object_mut().ok_or_else(|| Error::ExpectingObject)?;
+
+    let pairs = table_columns(&db, &table_name)?
+        .into_iter()
+        .filter_map(|col| {
+            let name = col.name;
+            match obj.remove(&name) {
+                Some(value) => Some(Ok((name, value))),
+                None => {
+                    if col.has_dflt_value {
+                        None
+                    } else {
+                        Some(Err(Error::MissingValue(name)))
+                    }
+                }
+            }
+        })
+        .collect::<Result<Map<String, Value>>>()?;
+
+    format!("INSERT INTO {} ({}) VALUES ({})", table_name, ColumnsOf(&pairs), ValuesOf(&pairs));
+
+
+    Ok(DatabaseRow(Map::new()))
+}
 
 #[get("/api/v1/<table_name>")]
 fn table(
     pool: State<Pool<SqliteConnectionManager>>,
     table_name: String,
 ) -> Stream<impl io::Read + 'static> {
-    use serde_json::{to_value, Map, Number, Value};
-
+    use serde_json::{to_value, Number};
     let db = pool.get().unwrap();
     drop(pool);
     let it = db
@@ -42,7 +146,7 @@ fn table(
             Ok(whole_row)
         })
         .unwrap()
-        .map(Result::unwrap);
+        .map(std::result::Result::unwrap);
     Stream::from(SerdeAdapter::new(it))
 }
 
@@ -138,6 +242,6 @@ fn main() {
 
     rocket::ignite()
         .manage(pool)
-        .mount("/", routes![table, files, index])
+        .mount("/", routes![table, table_add, files, index])
         .launch();
 }

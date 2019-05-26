@@ -6,12 +6,12 @@ import { FormsModule } from "@angular/forms";
 
 import { AppComponent } from "./app.component";
 
-import { OmServerListComponent } from "./om_server/om_server.component";
-import { OmAdminListComponent } from "./om_admin/om_admin-list.component";
+import { OmServerListComponent } from "./om_server/om_server-list.component";
+import { OmAdminListComponent, OmAdminAddComponent } from "./om_admin/om_admin";
 import { OmEnvironmentListComponent } from "./om_environment/om_environment.component";
 import { OmAdmin, GenericApi, OmEnvironment, OmServer } from "./rest.service";
 
-const endpoint = `${window.location.protocol}//${window.location.host}/api/v1/`;
+const endpoint = `${window.location.protocol}//${window.location.host}/api/v1`;
 const appRoutes: Routes = [
     {
         path: "om_server",
@@ -41,6 +41,7 @@ const appRoutes: Routes = [
         OmServerListComponent,
         OmEnvironmentListComponent,
         OmAdminListComponent,
+        OmAdminAddComponent,
     ],
     imports: [
         RouterModule.forRoot(appRoutes),

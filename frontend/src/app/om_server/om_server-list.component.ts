@@ -11,7 +11,7 @@ import { ActivatedRoute, Router } from '@angular/router';
       <a routerLink="/om_servers/add">Add</a>
     </div>
 
-    <ul class="products">
+    <ul>
       <li *ngFor="let item of list; let i=index;">
         <!--a routerLink="/product-details/{{p._id}}"-->
         <span class="badge">{{i+1}}</span> {{item.fqdn}}

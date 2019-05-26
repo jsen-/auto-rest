@@ -28,6 +28,8 @@ function handleError<T>(operation = 'operation', result?: T) {
     };
 }
 
+type SansId<T> = Exclude<T, {id:number}>;
+
 @Injectable({
     providedIn: 'root',
 })
@@ -40,13 +42,13 @@ export class GenericApi<T extends { id: Option<number> }> {
     // public get(id: number): Observable<T> {
     //     return this.http.get(`${this.path}/${id}`).pipe(map_extract());
     // }
-    // public add(t: T): Observable<T> {
-    //     return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
-    //         .pipe(
-    //             tap((t) => console.log(`added ${this.api_name} w/ id=${t.id}`)),
-    //             catchError(handleError<T>(`add ${this.api_name}`))
-    //         );
-    // }
+    public add(t: SansId<T>): Observable<T> {
+        return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
+            .pipe(
+                tap((t) => console.log(`added ${this.api_name} w/ id=${t.id}`)),
+                catchError(handleError<T>(`add ${this.api_name}`))
+            );
+    }
     // public update(id: number, t: T): Observable<T> {
     //     return this.http.put<T>(`${this.path}/${id}`, JSON.stringify(t), httpOptions)
     //         .pipe(

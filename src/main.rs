@@ -5,11 +5,13 @@ mod prep;
 
 use error::{Error, Result};
 
+use itertools::Itertools as _;
 use prep::PrepareAndFetch;
 use pulser::SerdeAdapter;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::{http, response, response::Stream, routes, Request, State};
+use rocket::http::Status;
 use rocket_codegen::{get, post};
 use rocket_contrib::json::Json;
 use rusqlite as sqlite;
@@ -30,9 +32,23 @@ struct ColumnDesc {
 type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 type ConnPool = Pool<SqliteConnectionManager>;
 
-fn table_columns(conn: &Connection, table_name: &str) -> sqlite::Result<Vec<ColumnDesc>> {
-    conn.prepare("PRAGMA table_info(?)")?
-        .query_map(&[table_name], |row| {
+fn table_columns(conn: &Connection, table_name: &str) -> sqlite::Result<Option<Vec<ColumnDesc>>> {
+    println!("2");
+    let count = conn.query_row(
+        "SELECT count(*)
+           FROM sqlite_master
+          WHERE type = 'table'
+            AND name = ?",
+        &[table_name],
+        |row| row.get::<_, isize>(0),
+    )?;
+    if count == 0 {
+        return Ok(None);
+    }
+    println!("3");
+    let columns = conn
+        .prepare(&format!("PRAGMA table_info({})", table_name))?
+        .query_map(sqlite::NO_PARAMS, |row| {
             let not_null: i32 = row.get_unwrap(3);
             let pk: i32 = row.get_unwrap(5);
             let dflt_value: ValueRef = row.get_raw(4);
@@ -44,23 +60,24 @@ fn table_columns(conn: &Connection, table_name: &str) -> sqlite::Result<Vec<Colu
                 pk: if pk == 1 { true } else { false },
             })
         })?
-        .collect::<sqlite::Result<Vec<_>>>()
+        .collect::<sqlite::Result<Vec<_>>>()?;
+    Ok(Some(columns))
 }
 
 struct DatabaseRow(Map<String, Value>);
 impl<'r> response::Responder<'r> for DatabaseRow {
-    fn respond_to(self, request: &Request) -> response::Result<'r> {
+    fn respond_to(self, _request: &Request) -> response::Result<'r> {
         response::Response::build().ok()
     }
 }
 
 use std::fmt;
 
-struct ColumnsOf<'a>(&'a Map<String, Value>);
+struct ColumnsOf<'a>(&'a Vec<&'a String>);
 impl<'a> fmt::Display for ColumnsOf<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut it = self.0.iter().peekable();
-        while let Some((key, _)) = it.next() {
+        while let Some(key) = it.next() {
             write!(f, "{}", key)?;
             if let Some(_) = it.peek() {
                 write!(f, ", ")?;
@@ -70,52 +87,151 @@ impl<'a> fmt::Display for ColumnsOf<'a> {
     }
 }
 
-struct ValuesOf<'a>(&'a Map<String, Value>);
-impl<'a> fmt::Display for ValuesOf<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut it = self.0.iter().peekable();
-        while let Some((_, value)) = it.next() {
-            write!(f, "{}", value)?;
-            if let Some(_) = it.peek() {
-                write!(f, ", ")?;
-            }
+union Num {
+    f: f64,
+    i: i64,
+}
+
+struct ToSqlIter<'a, T> {
+    columns: T,
+    values: &'a Map<String, Value>,
+    num: Num,
+}
+impl<'a, T> ToSqlIter<'a, T> {
+    pub fn new<I>(columns: I, values: &'a Map<String, Value>) -> Self
+    where
+        I: IntoIterator<Item = &'a String, IntoIter = T>,
+        T: Iterator<Item = &'a String>,
+    {
+        Self {
+            columns: columns.into_iter(),
+            values: values,
+            num: Num { i: 0 },
         }
-        Ok(())
     }
 }
 
+impl<'a, T> Iterator for ToSqlIter<'a, T>
+where
+    T: Iterator<Item = &'a String>,
+{
+    type Item = &'a dyn sqlite::ToSql;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.columns
+            .next()
+            .and_then(|column_name| -> Option<&dyn sqlite::ToSql> {
+                match &self.values[column_name] {
+                    Value::Bool(b) => Some(b),
+                    Value::Null => Some(&sqlite::types::Null),
+                    Value::String(s) => Some(s),
+                    Value::Number(n) => {
+                        if n.is_f64() {
+                            self.num = Num {
+                                f: n.as_f64().unwrap(),
+                            };
+                            let x: &f64 = unsafe { std::mem::transmute(&self.num.f) };
+                            Some(x)
+                        } else if n.is_u64() {
+                            self.num = Num {
+                                i: n.as_u64().unwrap() as i64,
+                            };
+                            let x: &i64 = unsafe { std::mem::transmute(&self.num.i) };
+                            Some(x)
+                        } else if n.is_i64() {
+                            self.num = Num {
+                                i: n.as_i64().unwrap(),
+                            };
+                            let x: &i64 = unsafe { std::mem::transmute(&self.num.i) };
+                            Some(x)
+                        } else {
+                            panic!("Number in json_value is not f64, neither u64, nor i64");
+                        }
+                    }
+                    Value::Object(_) | Value::Array(_) => {
+                        panic!("structured types cannot be inserted")
+                    }
+                }
+            })
+    }
+}
+
+fn sql_to_json(row: &sqlite::Row) -> sqlite::Result<Value> {
+    use serde_json::{to_value, Number};
+    let whole_row = row
+        .columns()
+        .into_iter()
+        .enumerate()
+        .map(|(index, column)| {
+            let value = match row.get_raw(index) {
+                ValueRef::Null => Value::Null,
+                ValueRef::Text(s) => Value::String(s.to_string()),
+                ValueRef::Integer(i) => Value::Number(Number::from(i)),
+                ValueRef::Real(f) => to_value(f).unwrap(),
+                ValueRef::Blob(_bytes) => Value::String("<blob>".into()),
+            };
+            (column.name().to_string(), value)
+        })
+        .collect::<Map<_, _>>();
+    Ok(Value::Object(whole_row))
+}
+
 #[post("/api/v1/<table_name>", data = "<data>")]
-fn table_add(
-    pool: State<ConnPool>,
-    table_name: String,
-    mut data: Json<Value>,
-) -> Result<DatabaseRow> {
+fn table_add(pool: State<ConnPool>, table_name: String, data: Json<Value>) -> std::result::Result<Json<Value>, (Status, Error)> {
     let db = pool.get().unwrap();
     drop(pool);
 
-    let obj = data.as_object_mut().ok_or_else(|| Error::ExpectingObject)?;
+    let values = data
+        .as_object()
+        .ok_or_else(|| Error::ExpectingObject(String::new()))?;
 
-    let pairs = table_columns(&db, &table_name)?
-        .into_iter()
-        .filter_map(|col| {
-            let name = col.name;
-            match obj.remove(&name) {
-                Some(value) => Some(Ok((name, value))),
-                None => {
-                    if col.has_dflt_value {
-                        None
+    let cols = table_columns(&db, &table_name).map_err(Error::from)?;
+    let (cols, columns) = match cols {
+        None => return Err(Error::TableNotFound(table_name).into()),
+        Some(ref columns) => (
+            columns,
+            columns
+                .iter()
+                .filter_map(|col| {
+                    let name = &col.name;
+                    if values.contains_key(name) {
+                        Some(Ok(&col.name))
                     } else {
-                        Some(Err(Error::MissingValue(name)))
+                        if col.has_dflt_value || col.pk {
+                            None
+                        } else {
+                            Some(Err(Error::MissingValue(name.to_string())))
+                        }
                     }
-                }
-            }
-        })
-        .collect::<Result<Map<String, Value>>>()?;
+                })
+                .collect::<Result<Vec<&String>>>()?,
+        ),
+    };
 
-    format!("INSERT INTO {} ({}) VALUES ({})", table_name, ColumnsOf(&pairs), ValuesOf(&pairs));
+    let sql = format!(
+        "INSERT INTO {} ({}) VALUES ({})",
+        table_name,
+        ColumnsOf(&columns),
+        std::iter::repeat("?")
+            .take(columns.len())
+            .intersperse(", ")
+            .collect::<String>()
+    );
 
-
-    Ok(DatabaseRow(Map::new()))
+    let id_column = cols
+        .iter()
+        .find(|&col| col.pk)
+        .map(|col| &col.name)
+        .unwrap();
+    let id = db.prepare(&sql).map_err(Error::from)?.insert(ToSqlIter::new(columns, values)).map_err(Error::from)?;
+    let obj = db
+        .prepare(&format!(
+            "SELECT * FROM {} WHERE {} = ?",
+            table_name, id_column
+        ))
+        .map_err(Error::from)?
+        .query_row(&[id], sql_to_json)
+        .map_err(Error::from)?;
+    Ok(Json(obj))
 }
 
 #[get("/api/v1/<table_name>")]

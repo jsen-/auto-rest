@@ -11,7 +11,6 @@ use pulser::SerdeAdapter;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::{http, response, response::Stream, routes, Request, State};
-use rocket::http::Status;
 use rocket_codegen::{get, post};
 use rocket_contrib::json::Json;
 use rusqlite as sqlite;
@@ -176,13 +175,13 @@ fn sql_to_json(row: &sqlite::Row) -> sqlite::Result<Value> {
 }
 
 #[post("/api/v1/<table_name>", data = "<data>")]
-fn table_add(pool: State<ConnPool>, table_name: String, data: Json<Value>) -> std::result::Result<Json<Value>, (Status, Error)> {
+fn table_add(pool: State<ConnPool>, table_name: String, data: Json<Value>) -> Result<Json<Value>> {
     let db = pool.get().unwrap();
     drop(pool);
 
     let values = data
         .as_object()
-        .ok_or_else(|| Error::ExpectingObject(String::new()))?;
+        .ok_or_else(|| Error::ExpectingObject)?;
 
     let cols = table_columns(&db, &table_name).map_err(Error::from)?;
     let (cols, columns) = match cols {

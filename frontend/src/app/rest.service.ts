@@ -10,11 +10,15 @@ const httpOptions = {
     })
 };
 
-function extractData<T>(res: any): T {
-    return res || {};
+type Id = { id: number };
+export type SansId<T extends Id> = Pick<T, Exclude<keyof T, "id">>;
+type Json<T extends Id> = SansId<T> & { id: number };
+
+function extractData<T extends Id>(res: T[]): T[] {
+    return res || [];
 }
-function map_extract<T>() {
-    return map<any, T>(extractData);
+function map_extract<T extends Id>() {
+    return map<any, T[]>(extractData);
 }
 
 function handleError<T>(operation = 'operation', result?: T) {
@@ -28,12 +32,12 @@ function handleError<T>(operation = 'operation', result?: T) {
     };
 }
 
-type SansId<T> = Exclude<T, {id:number}>;
+
 
 @Injectable({
     providedIn: 'root',
 })
-export class GenericApi<T extends { id: Option<number> }> {
+export class GenericApi<T extends Id> {
     constructor(private http: HttpClient, private path: string, private api_name: string) { }
 
     public get_all(): Observable<T[]> {
@@ -46,7 +50,7 @@ export class GenericApi<T extends { id: Option<number> }> {
         return this.http.post<T>(`${this.path}`, JSON.stringify(t), httpOptions)
             .pipe(
                 tap((t) => console.log(`added ${this.api_name} w/ id=${t.id}`)),
-                catchError(handleError<T>(`add ${this.api_name}`))
+                // catchError(handleError<T>(`add ${this.api_name}`))
             );
     }
     // public update(id: number, t: T): Observable<T> {
@@ -60,7 +64,7 @@ export class GenericApi<T extends { id: Option<number> }> {
         return this.http.delete<T>(`${this.path}/${id}`, httpOptions)
             .pipe(
                 tap(_ => console.log(`deleted ${this.api_name} id=${id}`)),
-                catchError(handleError<T>(`delete ${this.api_name}`))
+                // catchError(handleError<T>(`delete ${this.api_name}`))
             );
     }
 }
@@ -69,7 +73,7 @@ type Ref<T> = { [K in keyof T]: T[K] };
 type Obj<T> = { [K in keyof T]: T[K] };
 
 export class Product {
-    id!: Option<number>;
+    id!: number;
     name!: string;
     desc!: string;
     price!: number;
@@ -82,20 +86,20 @@ export class Product {
 }
 
 export class OmAdmin {
-    id!: Option<number>;
+    id!: number;
     name!: string;
     mail!: string;
     sm_login!: string;
 }
 
 export class OmEnvironment {
-    id!: Option<number>;
+    id!: number;
     name!: string;
     om_admin!: Option<Ref<OmAdmin>>;
 }
 
 export class OmServer {
-    id!: Option<number>;
+    id!: number;
     fqdn!: string;
     alias!: Option<string>;
     om_environment!: Ref<OmEnvironment>

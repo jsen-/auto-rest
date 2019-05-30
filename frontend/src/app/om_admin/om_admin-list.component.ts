@@ -5,41 +5,58 @@ import { OmAdminAddComponent } from "./om_admin-add.component";
 
 @Component({
     selector: 'app-om_admin',
+    styles: [`
+#error {
+    position: fixed;
+    width: 100%;
+    opacity: 0.9;
+    padding: 20px;
+    background-color: red;
+    color: yellow;
+}
+`],
     template: `
-<div *ngIf="!adding">
-    <a (click)="adding = true">add</a>
-</div>
-<div *ngIf="adding">
-    <app-om_admin-add (done)="update_list()"></app-om_admin-add>
-</div>
+<div *ngIf="error" id="error">{{error}}</div>
+<app-om_admin-add (done)="refresh()" (error)="show_error($event)"></app-om_admin-add>
 <ul class="products">
     <li *ngFor="let item of list; let i=index;">
-        <!--a routerLink="/product-details/{{p._id}}"-->
         <span class="badge">{{i+1}}</span> {{item.name}} {{item.mail}} {{item.sm_login}}
         <button class="delete" title="delete admin" (click)="delete(item)">x</button>
     </li>
 </ul>`,
 })
-export class OmAdminListComponent implements OnInit {
+export class OmAdminListComponent {
+
+    error?: string = "";
+    error_timeout?: number;
 
     list: OmAdmin[] = [];
-    adding = false;
 
-    constructor(@Inject("OmAdminService") private rest: GenericApi<OmAdmin>,
-        private route: ActivatedRoute,
-        private router: Router,
-    ) { }
-
-    ngOnInit() {
-        this.update_list();
+    constructor(@Inject("OmAdminService") private rest: GenericApi<OmAdmin>) {
+        this.refresh();
     }
 
-    update_list() {
-        this.rest.get_all().subscribe((data) => this.list = data);
+    refresh() {
+        this.rest.get_all().subscribe(
+            (data) => this.list = data,
+            (err) => this.show_error(err)
+        );
     }
-    delete(id: number) {
-        this.rest.delete(id)
-            .subscribe(_ => this.update_list(), console.error);
+
+    show_error(message: string) {
+        this.error = message;
+        clearTimeout(this.error_timeout);
+        this.error_timeout = setTimeout(() => this.error = "", 3000);
+    }
+
+    delete(item: OmAdmin) {
+        if (window.confirm(`Are sure you want to delete "${item.name}" ?`)) {
+            this.rest.delete(item.id)
+                .subscribe(
+                    _ => this.refresh(),
+                    (err) => this.show_error(err)
+                );
+        }
     }
 
 }

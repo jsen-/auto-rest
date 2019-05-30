@@ -29,8 +29,6 @@
     "@angular/cli": "7.3",
     "@angular/compiler-cli": "7.2",
     "@angular/language-service": "7.2",
-    "@types/node": "11.13",
-    "ts-node": "8.1",
     "tslint": "5.16",
     "typescript": "3.2"
   }

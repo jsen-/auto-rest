@@ -9,8 +9,11 @@ use serde::Serialize;
 #[derive(Debug)]
 pub enum Error {
     Db(rusqlite::Error),
+    DbPool(String),
     ConstraintViolation(Option<String>),
     TableNotFound(String),
+    NoPrimaryKey(String),
+    CompositePrimaryKey(String),
     MissingValue(String),
     ExpectingObject,
 }
@@ -18,23 +21,38 @@ pub enum Error {
 #[derive(Serialize)]
 struct JsonErr {
     error: String,
+    field: Option<String>,
+}
+impl From<String> for JsonErr {
+    fn from(error: String) -> Self {
+        JsonErr { error, field: None }
+    }
 }
 
 impl<'r> response::Responder<'r> for Error {
     fn respond_to(self, req: &Request) -> response::Result<'r> {
-        let error = match self {
-            Error::Db(inner_error) => format!("{}", inner_error),
-            Error::ConstraintViolation(Some(field_name)) => {
-                format!(r#"Constraint violation on field "{}""#, field_name)
-            }
-            Error::ConstraintViolation(None) => "Constraint violation".into(),
-            Error::TableNotFound(table_name) => format!(r#"Table "{}" not found"#, table_name),
+        let error: JsonErr = match self {
+            Error::Db(inner_error) => format!("{}", inner_error).into(),
+            Error::ConstraintViolation(field) => JsonErr {
+                error: "Constraint violation".to_string(),
+                field,
+            },
+            Error::TableNotFound(table_name) => format!(r#"Table "{}" not found"#, table_name).into(),
             Error::MissingValue(field_name) => {
-                format!(r#"Value for field "{}" is missing"#, field_name)
+                format!(r#"Value for field "{}" is missing"#, field_name).into()
             }
-            Error::ExpectingObject => format!("Input format should be a Json object"),
+            Error::NoPrimaryKey(table_name) => format!(
+                r#"Table "{}" does not have a primary key column"#,
+                table_name
+            ).into(),
+            Error::CompositePrimaryKey(table_name) => format!(
+                r#"Table "{}" has composite primary key, which is not supported"#,
+                table_name
+            ).into(),
+            Error::DbPool(msg) => msg.into(),
+            Error::ExpectingObject => format!("Input format should be a Json object").into(),
         };
-        let res = Json(serde_json::to_string(&JsonErr { error }).unwrap())
+        let res = Json(serde_json::to_string(&error).unwrap())
             .respond_to(req)
             .unwrap();
         response::Response::build()
@@ -49,9 +67,23 @@ impl From<Error> for (Status, Error) {
         (Status::raw(400), val)
     }
 }
+impl From<r2d2::Error> for Error {
+    fn from(val: r2d2::Error) -> Error {
+        Error::DbPool(format!("{}", val))
+    }
+}
 
 fn get_fieldname_from_constraint_violation_message(msg: String) -> Option<String> {
-    None
+    const PREFIX: &str = "UNIQUE constraint failed: ";
+    if msg.starts_with(PREFIX) {
+        msg[PREFIX.len()..]
+            .split('.')
+            .skip(1)
+            .map(String::from)
+            .next()
+    } else {
+        None
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
